@@ -29,14 +29,11 @@ Three seeds, 2.67B tokens, top-1 routing, 4 experts, same NanoGPT large-batch re
 ## Check Config
 
 ```bash
-cd ...
+cd <repo>
 
-PY=...
-DATA=...
-
-$PY moe/run_moe_nanogpt.py \
-  --gpus 0,1,2 \
-  --data-dir "$DATA" \
+<python> moe/run_moe_nanogpt.py \
+  --gpus 0 1 2 \
+  --data-dir <fineweb_token_cache> \
   --run-root runs/moe_nanogpt_50k_top1_e4_routeraux0p01_3seeds_2p67b \
   --seeds 43,44,45 \
   --arms muon,sign,afmoun \
@@ -48,15 +45,15 @@ Adjust `PY` and `DATA` for the local environment.
 ## Run
 
 ```bash
-cd ...
+cd <repo>
 
 mkdir -p logs/moe_nanogpt_50k_top1_e4_routeraux0p01_3seeds_2p67b
 
-AFMOUN_WORKER_PYTHON=... \
-nohup ... \
+AFMOUN_WORKER_PYTHON=<python> \
+nohup <python> \
   moe/run_moe_nanogpt.py \
-  --gpus 0,1,2 \
-  --data-dir ...\
+  --gpus 0 1 2 \
+  --data-dir <fineweb_token_cache> \
   --run-root runs/moe_nanogpt_50k_top1_e4_routeraux0p01_3seeds_2p67b \
   --seeds 43,44,45 \
   --arms muon,sign,afmoun \
@@ -99,7 +96,7 @@ nohup ... \
 ## Summarize
 
 ```bash
-cd ...
+cd <repo>
 
 <python> moe/summarize_moe_nanogpt.py \
   --run-root runs/moe_nanogpt_50k_top1_e4_routeraux0p01_3seeds_2p67b

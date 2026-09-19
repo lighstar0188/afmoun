@@ -32,15 +32,24 @@ def last_phase(rows: list[dict], phase: str) -> dict:
     return vals[-1] if vals else {}
 
 
-def best_eval(rows: list[dict]) -> dict:
+def phase_at_or_before_step(rows: list[dict], phase: str, step: int | None) -> dict:
+    vals = [row for row in rows if row.get("phase") == phase]
+    if step is not None:
+        vals = [row for row in vals if int(row.get("step", -1) or -1) <= int(step)]
+    return vals[-1] if vals else {}
+
+
+def best_eval(rows: list[dict], max_step: int | None = None) -> dict:
     vals = [row for row in rows if row.get("phase") == "eval" and row.get("step", 0) > 0]
+    if max_step is not None:
+        vals = [row for row in vals if int(row.get("step", -1) or -1) <= int(max_step)]
     return min(vals, key=lambda row: row.get("eval_loss", float("inf"))) if vals else {}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Summarize AF-Muon tied source ablation runs.")
     parser.add_argument("--run-root", required=True, type=Path)
-    parser.add_argument("--csv", default="", type=Path)
+    parser.add_argument("--csv", default=None, type=Path)
     args = parser.parse_args()
 
     rows_out = []
@@ -53,10 +62,11 @@ def main() -> None:
             continue
         cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
         metrics = read_jsonl(metrics_path)
-        tr = last_phase(metrics, "train")
         ev = last_phase(metrics, "eval")
+        eval_step = int(ev.get("step", 0) or 0) if ev else None
+        tr = phase_at_or_before_step(metrics, "train", eval_step)
         dg = last_phase(metrics, "diagnostic")
-        be = best_eval(metrics)
+        be = best_eval(metrics, max_step=eval_step)
         source = cfg.get("tied_grad_source", "both")
         rows_out.append(
             {
@@ -65,6 +75,8 @@ def main() -> None:
                 "seed": cfg.get("seed"),
                 "complete": int(tr.get("step", 0) or 0) >= int(cfg.get("iterations", 0) or 0),
                 "step": ev.get("step", tr.get("step")),
+                "train_step": tr.get("step"),
+                "eval_step": ev.get("step"),
                 "tokens_M": ev.get("tokens_seen", tr.get("tokens_seen", 0)) / 1e6,
                 "train_loss": tr.get("loss"),
                 "eval_loss": ev.get("eval_loss"),
@@ -100,6 +112,8 @@ def main() -> None:
         "seed",
         "complete",
         "step",
+        "train_step",
+        "eval_step",
         "tokens_M",
         "train_loss",
         "eval_loss",
@@ -152,7 +166,7 @@ def main() -> None:
                 f"eval_ppl={baseline['eval_ppl'] - row['eval_ppl']:+.6f}"
             )
 
-    csv_path = args.csv or args.run_root / "nanogpt_tied_source_ablation_summary.csv"
+    csv_path = args.csv if args.csv is not None else args.run_root / "nanogpt_tied_source_ablation_summary.csv"
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=cols)

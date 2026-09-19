@@ -56,7 +56,7 @@ def fmt_value(value) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Summarize NanoGPT AF-Muon cap/scale sensitivity runs.")
     parser.add_argument("--run-root", required=True, type=Path)
-    parser.add_argument("--csv", default="", type=Path)
+    parser.add_argument("--csv", default=None, type=Path)
     args = parser.parse_args()
 
     rows_out = []
@@ -159,7 +159,7 @@ def main() -> None:
                 f"eval_ppl-default={row['eval_ppl'] - default['eval_ppl']:+.6f}"
             )
 
-    csv_path = args.csv or args.run_root / "nanogpt_afmoun_cap_scale_sensitivity_summary.csv"
+    csv_path = args.csv if args.csv is not None else args.run_root / "nanogpt_afmoun_cap_scale_sensitivity_summary.csv"
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=cols)

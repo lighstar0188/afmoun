@@ -32,8 +32,17 @@ def phase_at_step(rows: list[dict], phase: str, step: int | None) -> dict:
     return vals[-1] if vals else {}
 
 
-def best_eval(rows: list[dict]) -> dict:
+def phase_at_or_before_step(rows: list[dict], phase: str, step: int | None) -> dict:
+    vals = [row for row in rows if row.get("phase") == phase]
+    if step is not None:
+        vals = [row for row in vals if int(row.get("step", -1) or -1) <= int(step)]
+    return vals[-1] if vals else {}
+
+
+def best_eval(rows: list[dict], max_step: int | None = None) -> dict:
     vals = [row for row in rows if row.get("phase") == "eval" and row.get("step", 0) > 0]
+    if max_step is not None:
+        vals = [row for row in vals if int(row.get("step", -1) or -1) <= int(max_step)]
     return min(vals, key=lambda row: row.get("eval_loss", float("inf"))) if vals else {}
 
 
@@ -72,10 +81,10 @@ def collect(root: Path, eval_step: int | None = None) -> list[dict]:
     for run_dir in iter_run_dirs(root):
         cfg = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
         metrics = read_jsonl(run_dir / "metrics.jsonl")
-        tr = phase_at_step(metrics, "train", eval_step)
+        tr = phase_at_or_before_step(metrics, "train", eval_step)
         ev = phase_at_step(metrics, "eval", eval_step)
         dg = phase_at_step(metrics, "diagnostic", eval_step)
-        be = best_eval(metrics)
+        be = best_eval(metrics, max_step=eval_step)
         if not ev:
             continue
 
@@ -84,18 +93,26 @@ def collect(root: Path, eval_step: int | None = None) -> list[dict]:
         seed = int(cfg.get("seed"))
         iterations = int(cfg.get("iterations", 0) or 0)
         train_step = int(tr.get("step", 0) or 0)
-        eval_step = int(ev.get("step", 0) or 0)
-        target_step = int(eval_step if eval_step is not None else iterations)
-        complete = int(train_step >= target_step and eval_step >= target_step)
+        observed_eval_step = int(ev.get("step", 0) or 0)
+        target_step = int(eval_step if eval_step is not None else observed_eval_step)
+        reached_comparison = int(observed_eval_step >= target_step)
+        finished_training = int(
+            train_step >= iterations
+            or any(row.get("phase") == "checkpoint" and int(row.get("step", 0) or 0) >= iterations for row in metrics)
+        )
 
         rows_out.append(
             {
                 "seed": seed,
                 "tied_cap": float(cap),
                 "tied_scale": float(scale),
-                "complete": complete,
+                "complete": reached_comparison,
+                "reached_comparison": reached_comparison,
+                "finished_training": finished_training,
                 "step": ev.get("step", tr.get("step")),
                 "tokens_M": (ev.get("tokens_seen", tr.get("tokens_seen", 0)) or 0) / 1e6,
+                "train_step": tr.get("step"),
+                "eval_step": ev.get("step"),
                 "train_loss": tr.get("loss"),
                 "eval_loss": ev.get("eval_loss"),
                 "eval_ppl": ev.get("eval_ppl"),
@@ -127,13 +144,17 @@ def aggregate(raw_rows: list[dict]) -> list[dict]:
     out = []
     for (cap, scale), rows in sorted(grouped.items(), key=lambda kv: (kv[0][1], cap_sort_value(kv[0][0]))):
         seeds = sorted({int(r["seed"]) for r in rows})
+        if len(seeds) != len(rows):
+            duplicate = sorted(int(r["seed"]) for r in rows)
+            raise ValueError(f"duplicate runs for cap={cap}, scale={scale}: seeds={duplicate}")
         out.append(
             {
                 "tied_cap": cap,
                 "tied_scale": scale,
-                "n": len(rows),
+                "n": len(seeds),
                 "seeds": ",".join(map(str, seeds)),
                 "complete": int(all(int(r["complete"]) for r in rows)),
+                "finished_training": int(all(int(r["finished_training"]) for r in rows)),
                 "train_loss_mean": mean([float(r["train_loss"]) for r in rows]),
                 "train_loss_sd": sample_sd([float(r["train_loss"]) for r in rows]),
                 "eval_loss_mean": mean([float(r["eval_loss"]) for r in rows]),
@@ -208,6 +229,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Summarize multiseed NanoGPT cap/scale sensitivity runs.")
     parser.add_argument("--run-root", required=True, type=Path)
     parser.add_argument("--out-dir", default=None, type=Path)
+    parser.add_argument("--expected-seeds", default="", help="Comma-separated seed list required for each cap/scale cell.")
     parser.add_argument(
         "--eval-step",
         default=None,
@@ -220,6 +242,18 @@ def main() -> None:
     if not raw_rows:
         step_msg = f" at step {args.eval_step}" if args.eval_step is not None else ""
         raise SystemExit(f"no runs found under {args.run_root}{step_msg}")
+    expected_seeds = sorted(int(x.strip()) for x in args.expected_seeds.split(",") if x.strip())
+    if expected_seeds:
+        grouped: dict[tuple[float, float], list[int]] = defaultdict(list)
+        for row in raw_rows:
+            grouped[(row["tied_cap"], row["tied_scale"])].append(int(row["seed"]))
+        for (cap, scale), seeds in sorted(grouped.items(), key=lambda kv: (kv[0][1], cap_sort_value(kv[0][0]))):
+            unique = sorted(set(seeds))
+            if unique != expected_seeds or len(unique) != len(seeds):
+                raise ValueError(
+                    f"expected seeds {expected_seeds} for cap={cap}, scale={scale}; "
+                    f"found seeds {sorted(seeds)}"
+                )
 
     agg_rows = aggregate(raw_rows)
     out_dir = args.out_dir or args.run_root
@@ -227,9 +261,8 @@ def main() -> None:
     write_csv(out_dir / f"nanogpt_cap_scale_multiseed_raw{suffix}.csv", raw_rows)
     write_csv(out_dir / f"nanogpt_cap_scale_multiseed_aggregate{suffix}.csv", agg_rows)
 
-    expected = 42
     complete = sum(int(r["complete"]) for r in raw_rows)
-    print(f"Found {len(raw_rows)} runs; complete={complete}/{len(raw_rows)}; expected={expected}")
+    print(f"Found {len(raw_rows)} runs; reached_comparison={complete}/{len(raw_rows)}")
     for row in agg_rows:
         print(
             f"c={fmt_cap(row['tied_cap']):>8} s={row['tied_scale']:g} "

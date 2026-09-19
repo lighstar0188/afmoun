@@ -68,10 +68,10 @@ AFMOUN_WORKER_PYTHON=<python> \
   --afmoun-aux-weight-decay 0.0
 ```
 
-The default `--multiplier-mode all` applies the 0.1 stepsize multiplier to every
-arm. To interpret the SCION table literally as applying the multiplier only to
-the Hybrid Muon baseline, pass `--multiplier-mode muon_only`; the choice is saved
-in each run config.
+The default `--multiplier-mode muon_only` keeps the hidden-matrix Muon learning
+rate at the matched value while varying only the Muon-specific multiplier when
+requested. The alternative `--multiplier-mode all` is retained for sensitivity
+checks; the choice is saved in each run config.
 
 CPU-only configuration check before using GPUs:
 

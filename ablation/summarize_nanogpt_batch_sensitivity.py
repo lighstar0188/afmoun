@@ -49,6 +49,17 @@ def phase_at_or_before_tokens(rows: list[dict], phase: str, target_tokens: int |
     return max(vals, key=lambda row: int(row.get("tokens_seen", -1) or -1)) if vals else {}
 
 
+def phase_at_exact_tokens(rows: list[dict], phase: str, target_tokens: int | None) -> dict:
+    if target_tokens is None:
+        return phase_at_or_before_tokens(rows, phase, None)
+    vals = [
+        row for row in rows
+        if row.get("phase") == phase
+        and int(row.get("tokens_seen", -1) or -1) == int(target_tokens)
+    ]
+    return vals[-1] if vals else {}
+
+
 def best_eval_at_or_before_tokens(rows: list[dict], target_tokens: int | None) -> dict:
     vals = [row for row in rows if row.get("phase") == "eval" and row.get("step", 0) > 0]
     if target_tokens is not None:
@@ -69,12 +80,17 @@ def infer_batch_size(run_name: str, cfg: dict) -> int | None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Summarize NanoGPT batch-size sensitivity runs.")
     parser.add_argument("--run-root", required=True, type=Path)
-    parser.add_argument("--csv", default="", type=Path)
+    parser.add_argument("--csv", default=None, type=Path)
     parser.add_argument(
         "--target-tokens",
         type=int,
         default=None,
-        help="If set, summarize the latest train/eval/diagnostic row at or before this token budget.",
+        help="If set, summarize rows at this exact token budget unless --allow-earlier-target is used.",
+    )
+    parser.add_argument(
+        "--allow-earlier-target",
+        action="store_true",
+        help="Permit selecting the latest row at or before --target-tokens instead of requiring an exact match.",
     )
     args = parser.parse_args()
 
@@ -88,9 +104,13 @@ def main() -> None:
             continue
         cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
         metrics = read_jsonl(metrics_path)
-        tr = phase_at_or_before_tokens(metrics, "train", args.target_tokens)
-        ev = phase_at_or_before_tokens(metrics, "eval", args.target_tokens)
-        dg = phase_at_or_before_tokens(metrics, "diagnostic", args.target_tokens)
+        selector = phase_at_or_before_tokens if args.allow_earlier_target else phase_at_exact_tokens
+        ev = selector(metrics, "eval", args.target_tokens)
+        if args.target_tokens is not None and not ev:
+            raise ValueError(f"{run_dir} has no eval row at exactly {args.target_tokens} tokens")
+        eval_tokens = int(ev.get("tokens_seen", args.target_tokens or -1) or -1) if ev else args.target_tokens
+        tr = phase_at_or_before_tokens(metrics, "train", eval_tokens)
+        dg = selector(metrics, "diagnostic", args.target_tokens)
         be = best_eval_at_or_before_tokens(metrics, args.target_tokens)
         arm = cfg["arm"]
         batch_size = infer_batch_size(run_dir.name, cfg)
@@ -187,7 +207,7 @@ def main() -> None:
                 )
         print(" | ".join(parts))
 
-    csv_path = args.csv or args.run_root / "nanogpt_batch_sensitivity_summary.csv"
+    csv_path = args.csv if args.csv is not None else args.run_root / "nanogpt_batch_sensitivity_summary.csv"
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=cols)

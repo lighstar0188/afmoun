@@ -1,5 +1,7 @@
 torch
 transformers
+datasets
 numpy
 pandas
+Pillow
 tqdm

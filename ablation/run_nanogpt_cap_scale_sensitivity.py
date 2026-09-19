@@ -45,12 +45,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--data-dir", required=True)
     p.add_argument(
         "--run-root",
-        default="runs/nanogpt_afmoun_cap_scale_sensitivity_seed43_500m_matchbatch524k_diagckpt",
+        default="runs/nanogpt_afmoun_cap_scale_sensitivity_3seeds_step750_matchbatch524k",
     )
-    p.add_argument("--seed", type=int, default=43)
+    p.add_argument("--seeds", default="43,44,45")
     p.add_argument("--caps", default="1,2,3,4,6,10,inf")
     p.add_argument("--scales", default="0.5,1.0")
-    p.add_argument("--iterations", type=int, default=875)
+    p.add_argument("--iterations", type=int, default=750)
     p.add_argument("--eval-every-steps", type=int, default=125)
     p.add_argument("--diag-every-steps", type=int, default=125)
     p.add_argument("--log-every-steps", type=int, default=50)
@@ -61,10 +61,10 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def run_name(seed: int, cap: float, scale: float) -> str:
+def run_name(seed: int, cap: float, scale: float, iterations: int) -> str:
     return (
         f"nanogpt_afmoun_seed{seed}_cap{num_tag(cap)}_scale{num_tag(scale)}"
-        "_500m_fp32_matchbatch524k"
+        f"_step{int(iterations)}_fp32_matchbatch524k"
     )
 
 
@@ -113,6 +113,7 @@ def command(args: argparse.Namespace, cap: float, scale: float, out_dir: Path) -
 
 def main() -> None:
     args = parse_args()
+    seeds = [int(x.strip()) for x in args.seeds.split(",") if x.strip()]
     caps = parse_csv_caps(args.caps)
     scales = parse_csv_floats(args.scales)
     invalid = [c for c in caps if not math.isinf(c) and c < 1.0]
@@ -120,20 +121,22 @@ def main() -> None:
         raise ValueError(f"AF-Muon tied cap must be >= 1 or inf; invalid caps: {invalid}")
 
     jobs = []
-    for scale in scales:
-        for cap in caps:
-            name = run_name(args.seed, cap, scale)
-            jobs.append(
-                {
-                    "cap": cap,
-                    "scale": scale,
-                    "name": name,
-                    "out_dir": Path(args.run_root) / name,
-                }
-            )
+    for seed in seeds:
+        for scale in scales:
+            for cap in caps:
+                name = run_name(seed, cap, scale, args.iterations)
+                jobs.append(
+                    {
+                        "seed": seed,
+                        "cap": cap,
+                        "scale": scale,
+                        "name": name,
+                        "out_dir": Path(args.run_root) / name,
+                    }
+                )
 
     print("=== NanoGPT AF-Muon cap/scale sensitivity launcher ===", flush=True)
-    print(f"seed: {args.seed}", flush=True)
+    print(f"seeds: {seeds}", flush=True)
     print("caps:", ["inf" if math.isinf(c) else c for c in caps], flush=True)
     print(f"scales: {scales}", flush=True)
     print("jobs:", [j["name"] for j in jobs], flush=True)
@@ -148,12 +151,14 @@ def main() -> None:
     if args.dry_run:
         for job in jobs:
             print()
-            print(f"# cap={job['cap']}, scale={job['scale']}")
+            print(f"# seed={job['seed']}, cap={job['cap']}, scale={job['scale']}")
+            args.seed = job["seed"]
             print(" ".join(command(args, job["cap"], job["scale"], job["out_dir"])))
         return
 
     if args.check_config:
         for job in jobs:
+            args.seed = job["seed"]
             subprocess.run(
                 command(args, job["cap"], job["scale"], job["out_dir"]),
                 cwd=str(ROOT),
@@ -178,6 +183,7 @@ def main() -> None:
             log_path = log_dir / f"{job['name']}.log"
             handle = log_path.open("w", encoding="utf-8")
             env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
+            args.seed = job["seed"]
             proc = subprocess.Popen(
                 command(args, job["cap"], job["scale"], job["out_dir"]),
                 cwd=str(ROOT),

@@ -50,7 +50,7 @@ def parse_csv_text(text: str) -> list[str]:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Launch NanoGPT auxiliary/tied learning-rate sensitivity runs."
+        description="Launch NanoGPT auxiliary/fallback learning-rate sensitivity runs."
     )
     p.add_argument("--gpus", nargs="+", type=int, required=True)
     p.add_argument("--data-dir", required=True)
@@ -60,7 +60,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--seed", type=int, default=43)
     p.add_argument("--arms", default="muon,sign,afmoun")
-    p.add_argument("--vector-lrs", default="7.5e-5,1.5e-4,3e-4,6e-4,1.2e-3")
+    p.add_argument("--vector-lrs", default="7.5e-5,1.5e-4,3e-4,6e-4,1.2e-3,2.4e-3,4.8e-3,9.6e-3")
     p.add_argument("--iterations", type=int, default=954)
     p.add_argument("--eval-every-steps", type=int, default=125)
     p.add_argument("--diag-every-steps", type=int, default=125)
@@ -149,7 +149,7 @@ def main() -> None:
                 }
             )
 
-    print("=== NanoGPT aux/tied LR sensitivity launcher ===", flush=True)
+    print("=== NanoGPT auxiliary/fallback LR sensitivity launcher ===", flush=True)
     print(f"seed: {args.seed}", flush=True)
     print(f"vector_lrs: {vector_lrs}", flush=True)
     print("jobs:", [j["name"] for j in jobs], flush=True)

@@ -8,7 +8,13 @@ import time
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+
+
+def resolve_repo_path(path: str) -> Path:
+    p = Path(path)
+    return p if p.is_absolute() else REPO_ROOT / p
 
 
 def worker_python() -> str:
@@ -63,7 +69,7 @@ def command(args: argparse.Namespace, arm: str, seed: int, out_dir: Path) -> lis
     aux_wd = args.hybrid_aux_weight_decay if arm == "muon" else args.aux_weight_decay
     cmd = [
         worker_python(),
-        str(ROOT / "train_tied_imagegpt.py"),
+        str(SCRIPT_DIR / "train_tied_imagegpt.py"),
         "--data-dir", args.data_dir,
         "--output-dir", str(out_dir),
         "--arm", arm,
@@ -102,13 +108,15 @@ def command(args: argparse.Namespace, arm: str, seed: int, out_dir: Path) -> lis
 
 def main() -> None:
     args = parse_args()
+    args.data_dir = str(resolve_repo_path(args.data_dir))
+    run_root = resolve_repo_path(args.run_root)
     seeds = [int(x) for x in args.seeds.split(",") if x.strip()]
     arms = [x.strip() for x in args.arms.split(",") if x.strip()]
     jobs = []
     for seed in seeds:
         for arm in arms:
             name = f"tied_imagegpt_rgb554_16k_8l512_{arm_label(arm)}_seed{seed}"
-            jobs.append({"seed": seed, "arm": arm, "name": name, "out_dir": Path(args.run_root) / name})
+            jobs.append({"seed": seed, "arm": arm, "name": name, "out_dir": run_root / name})
 
     print("=== Tied ImageGPT RGB554 launcher ===", flush=True)
     print("jobs:", [j["name"] for j in jobs], flush=True)
@@ -118,13 +126,13 @@ def main() -> None:
         return
     if args.check_config:
         for job in jobs:
-            subprocess.run(command(args, job["arm"], job["seed"], job["out_dir"]), cwd=str(ROOT), check=True)
+            subprocess.run(command(args, job["arm"], job["seed"], job["out_dir"]), cwd=str(REPO_ROOT), check=True)
         return
 
     pending = list(jobs)
     running = []
     failures = []
-    log_dir = Path(args.run_root) / "_logs"
+    log_dir = run_root / "_logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     while pending or running:
@@ -138,7 +146,7 @@ def main() -> None:
             log_path = log_dir / f"{job['name']}.log"
             handle = log_path.open("w", encoding="utf-8")
             env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
-            proc = subprocess.Popen(command(args, job["arm"], job["seed"], job["out_dir"]), cwd=str(ROOT), env=env, stdout=handle, stderr=subprocess.STDOUT)
+            proc = subprocess.Popen(command(args, job["arm"], job["seed"], job["out_dir"]), cwd=str(REPO_ROOT), env=env, stdout=handle, stderr=subprocess.STDOUT)
             handle.close()
             running.append({"job": job, "gpu": gpu, "proc": proc, "log": log_path})
             print(f"[GPU {gpu}] launched {job['name']} pid={proc.pid} log={log_path}", flush=True)

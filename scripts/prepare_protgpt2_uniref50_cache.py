@@ -113,18 +113,24 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, trust_remote_code=True)
 
-    train_iter = get_split(args.dataset_name, args.train_split, args.streaming, args.seed)
+    train_split = args.train_split.strip()
+    train_iter = get_split(args.dataset_name, train_split, args.streaming, args.seed)
     first = next(iter(train_iter))
     sequence_column = choose_column(first, args.sequence_column)
-    train_iter = get_split(args.dataset_name, args.train_split, args.streaming, args.seed)
+    train_iter = get_split(args.dataset_name, train_split, args.streaming, args.seed)
 
     eval_split = args.eval_split.strip()
-    if eval_split:
-        eval_iter = get_split(args.dataset_name, eval_split, args.streaming, args.seed + 1)
-    else:
-        # If the dataset does not expose a validation split, use a disjoint
-        # deterministic streaming order for the held-out token cache.
-        eval_iter = get_split(args.dataset_name, args.train_split, args.streaming, args.seed + 10_000)
+    if not eval_split:
+        raise ValueError(
+            "A held-out --eval-split is required for reproducible validation. "
+            "For the paper recipe use --eval-split validation."
+        )
+    if eval_split == train_split:
+        raise ValueError(
+            "--eval-split must differ from --train-split for reproducible validation. "
+            "For the paper recipe use --train-split train --eval-split validation."
+        )
+    eval_iter = get_split(args.dataset_name, eval_split, args.streaming, args.seed + 1)
 
     train_info = write_tokens(
         train_iter,
@@ -149,8 +155,8 @@ def main() -> None:
         "dataset_name": args.dataset_name,
         "tokenizer_name": args.tokenizer_name,
         "sequence_column": sequence_column,
-        "train_split": args.train_split,
-        "eval_split": eval_split or f"{args.train_split} shuffled with seed {args.seed + 10000}",
+        "train_split": train_split,
+        "eval_split": eval_split,
         "train_path": "train_tokens_uint32.bin",
         "eval_path": "eval_tokens_uint32.bin",
         "dtype": "uint32",

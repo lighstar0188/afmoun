@@ -632,7 +632,7 @@ def main() -> None:
         "activation_mode": args.activation_mode,
         "scaled_relu_sq_effective": scaled_relu_sq,
         "nanogpt_recipe_note": "Matched paper protocol: 12 layers, head_dim 128, vocab 50304, batch 512, block 1024, iterations 5100, no warmdown, gradient clipping at norm 1.0.",
-        "tied_source_ablation_note": "For AF-Muon, split the tied-table gradient into sparse input-lookup and dense output-classifier contributions; all other parameter gradients are unchanged.",
+        "tied_source_ablation_note": "For AF-Muon, split the tied-table gradient into sparse input-lookup and dense output-classifier contributions before the standard global gradient-clipping operation; non-tied parameters retain their usual optimizer rules.",
     }
     (out_dir / "config.json").write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
 

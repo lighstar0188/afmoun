@@ -171,10 +171,9 @@ precision: FP32 trainable parameters and optimizer state with BF16 autocast
 gradient clipping: norm 1.0
 ```
 
-Related ablations are in `ablation/`: factorial tied-table vs. vector update,
-batch-size sensitivity, auxiliary/fallback LR sensitivity, cap/scale
-sensitivity, vocabulary-size sensitivity, real-width sensitivity, and tied-table
-gradient-source ablations.
+Related ablation recipes released in `ablation/` cover the NanoGPT factorial
+tied-table/vector update control, batch-size sensitivity, auxiliary/fallback LR
+sensitivity, cap/scale diagnostics, and tied-table gradient-source ablations.
 
 ### 2. SmolLM2-135M / FineWeb
 
@@ -361,6 +360,8 @@ Code:
 ```text
 dataset: UniRef50 2021_04
 tokenizer: ProtGPT2 BPE
+splits: train for training, validation for evaluation
+cache preparation: pass --train-split train --eval-split validation
 architecture: randomly initialized 363M-parameter RoPE decoder
 hidden size: 960
 intermediate size: 2560

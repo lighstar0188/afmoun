@@ -24,12 +24,12 @@ Default optimizer protocol:
 Recommended dry run for the paper-scale shared-vocabulary setting:
 
 ```bash
-cd ...
+cd <repo>
 
-AFMOUN_WORKER_PYTHON=...\
-... t5test/run_three_way_shared_vocab.py \
+AFMOUN_WORKER_PYTHON=<python> \
+<python> t5test/run_three_way_shared_vocab.py \
   --gpus 5 6 7 \
-  --data-dir ... \
+  --data-dir <fineweb_token_cache> \
   --run-root runs/t5test_small_5xparams_3seeds_rho1 \
   --seeds 43 44 45 \
   --arms muon,sign,afmoun \

@@ -179,9 +179,9 @@ def chunked_tied_clipped_row_update_v2(
 ) -> torch.Tensor:
     """Support-aware, complete-row chunked tied-table clipped LMO.
 
-    The persistent state is one parameter-dtype first-moment buffer. Oracle
-    arithmetic is performed in fp32 per row chunk. A full parameter-dtype
-    direction is returned; no full-table fp32 direction is materialized.
+    The persistent state is one parameter-dtype first-moment buffer. Solver
+    intermediates are chunked by complete rows in fp32; the returned update is a
+    full parameter-dtype tensor.
     """
     _validate_momentum(beta)
     if param.ndim != 2 or grad.ndim != 2:

@@ -75,7 +75,8 @@ def build_loader(dataset: Dataset, *, micro_batch_size: int, seed: int, shuffle:
 @torch.no_grad()
 def evaluate(model, loader, *, device: torch.device, use_bf16: bool, max_eval_blocks: int) -> tuple[float, float, int]:
     model.eval()
-    losses = []
+    loss_sum = 0.0
+    target_count = 0
     tokens_seen = 0
     blocks_seen = 0
     autocast_enabled = bool(use_bf16 and device.type == "cuda")
@@ -83,13 +84,15 @@ def evaluate(model, loader, *, device: torch.device, use_bf16: bool, max_eval_bl
         input_ids = input_ids.to(device, non_blocking=True)
         with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=autocast_enabled):
             outputs = model(input_ids=input_ids, labels=input_ids)
-        losses.append(float(outputs.loss.detach().cpu()))
+        batch_targets = int(input_ids.shape[0]) * max(1, int(input_ids.shape[1]) - 1)
+        loss_sum += float(outputs.loss.detach().cpu()) * batch_targets
+        target_count += batch_targets
         tokens_seen += int(input_ids.numel())
         blocks_seen += int(input_ids.shape[0])
         if blocks_seen >= int(max_eval_blocks):
             break
     model.train()
-    loss = float(np.mean(losses)) if losses else float("nan")
+    loss = loss_sum / target_count if target_count > 0 else float("nan")
     ppl = math.exp(min(20.0, loss)) if math.isfinite(loss) else float("nan")
     return loss, ppl, tokens_seen
 

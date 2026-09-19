@@ -18,7 +18,7 @@ the input color-token table with the output classifier table.
 - Seeds: 43, 44, 45
 - Optimizers: Hybrid Muon, SCION-style Sign, AF-Muon
 - Batch: `batch_size=512`, `micro_batch_size=256`, 2 accumulation steps
-- Evaluation: 16 batches per evaluation, 4,194,304 image tokens total
+- Evaluation: 16 micro-batches per evaluation, 4,194,304 image tokens total
 - Precision: FP32 trainable parameters and optimizer state with BF16 autocast
 
 ## Files

@@ -39,11 +39,12 @@ def chunked_tied_clipped_row_update(
     target_ratio: float = 0.0,
     chunk_rows: int = 2048,
 ) -> torch.Tensor:
-    """Validated chunked tied-table clipped-row LMO.
+    """Legacy V1 tied-table clipped-row prototype.
 
-    This matches the final experimental implementation:
-    B <- beta B + grad, then rowwise L_c(B_i), with endpoint fast paths and
-    8 bracket expansions + 24 bisection iterations for finite interior caps.
+    This historical implementation is kept only for provenance. It is not the
+    support-aware V2 oracle used in the paper experiments. In particular, it
+    applies a post-clipping row renormalization and therefore should not be used
+    to reproduce the paper's finite-cap tied-table update.
     """
     if grad.ndim != 2:
         return vector_rms_update(param, grad, state, beta=beta, lr=lr, eps=eps, target_ratio=target_ratio)
@@ -97,7 +98,7 @@ def chunked_tied_clipped_row_update(
 
 
 class AFMuon(Optimizer):
-    """AF-Muon / AF-Moun with Muon matrices and clipped tied-table LMO."""
+    """Legacy AF-Muon V1 optimizer prototype, not used in the paper runs."""
 
     def __init__(self, param_groups):
         super().__init__(param_groups, {})

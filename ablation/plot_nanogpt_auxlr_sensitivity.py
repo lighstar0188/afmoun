@@ -217,7 +217,7 @@ def plot(
             top=0.77,
             wspace=0.30 if len(panels) >= 3 else 0.24,
         )
-        fig.supxlabel("Auxiliary/tied learning-rate multiplier", x=0.54, y=0.045, fontsize=8.0)
+        fig.supxlabel("Auxiliary/fallback learning-rate multiplier", x=0.54, y=0.045, fontsize=8.0)
         ordered_handles = [legend_handles[m] for m in ARM_ORDER if m in legend_handles]
         ordered_labels = [m for m in ARM_ORDER if m in legend_handles]
         fig.legend(
@@ -254,7 +254,7 @@ def plot(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Plot NanoGPT auxiliary/tied LR sensitivity from a summary CSV."
+        description="Plot NanoGPT auxiliary/fallback LR sensitivity from a summary CSV."
     )
     parser.add_argument("--csv", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)

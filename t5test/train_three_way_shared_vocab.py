@@ -492,7 +492,8 @@ def split_batch(batch: torch.Tensor, *, source_len: int, target_len: int, bos_to
 @torch.no_grad()
 def evaluate(model, loader, args, *, device: torch.device, encoder_mode: str = "normal") -> tuple[float, float, int]:
     model.eval()
-    losses = []
+    loss_sum = 0.0
+    target_count = 0
     tokens_seen = 0
     max_batches = max(1, math.ceil(int(args.eval_tokens) / (int(args.micro_batch_size) * int(args.target_len))))
     autocast_enabled = bool(args.bf16 and device.type == "cuda")
@@ -503,12 +504,14 @@ def evaluate(model, loader, args, *, device: torch.device, encoder_mode: str = "
         )
         with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=autocast_enabled):
             out = model(source, decoder_input, labels, encoder_mode=encoder_mode)
-        losses.append(float(out["loss"].detach().cpu()))
+        batch_targets = int(labels.numel())
+        loss_sum += float(out["loss"].detach().cpu()) * batch_targets
+        target_count += batch_targets
         tokens_seen += int(labels.numel())
         if i + 1 >= max_batches:
             break
     model.train()
-    loss = float(np.mean(losses)) if losses else float("nan")
+    loss = loss_sum / target_count if target_count > 0 else float("nan")
     return loss, math.exp(min(20.0, loss)), tokens_seen
 
 
