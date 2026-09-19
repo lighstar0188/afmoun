@@ -17,6 +17,7 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from optimizers import build_afmoun_v2, build_hybrid_muon, build_scion_sign_v2
+from optimizers.afmoun_v2 import _finite_cap_oracle_fp32, _row_rms_oracle_fp32
 
 
 class ImageTokenDataset(Dataset):
@@ -211,9 +212,10 @@ def lmo_alignment_stats(model: TiedImageGPT, opt, *, cap: float, chunk_rows: int
         return {}
     d = int(buf.shape[1])
     total = capped = capped_rows = active_rows = 0
-    raw_energy = raw_tail_energy = 0.0
+    rms_energy = rms_tail_energy = 0.0
     dot_af_sign = norm_af = norm_sign = obj_af = obj_sign = 0.0
     row_norms = []
+    row_norm_target = math.sqrt(float(d))
     for start in range(0, int(buf.shape[0]), int(chunk_rows)):
         raw = buf[start : start + int(chunk_rows)].detach().float()
         active = raw.abs().amax(dim=1) > 0
@@ -224,14 +226,31 @@ def lmo_alignment_stats(model: TiedImageGPT, opt, *, cap: float, chunk_rows: int
         row_norms.append(raw.norm(dim=1).cpu())
         abs_raw = raw.abs()
         row_rms = raw.square().mean(dim=1, keepdim=True).sqrt().clamp_min(1e-30)
-        af = torch.sign(raw) * torch.minimum(abs_raw / row_rms, torch.full_like(raw, float(cap)))
+        row_rms_endpoint = raw / row_rms
+        if float(cap) == 1.0:
+            af = raw.sign()
+        elif math.isinf(float(cap)) or float(cap) >= row_norm_target:
+            af = _row_rms_oracle_fp32(raw)
+        else:
+            af = _finite_cap_oracle_fp32(
+                raw,
+                cap=float(cap),
+                bisection_steps=32,
+                max_bracket_steps=128,
+            )
         sign = torch.sign(raw)
         total += int(raw.numel())
-        clipped = abs_raw / row_rms > float(cap)
-        capped += int(clipped.sum().item())
-        capped_rows += int(clipped.any(dim=1).sum().item())
-        raw_energy += float(abs_raw.square().sum(dtype=torch.float64).item())
-        raw_tail_energy += float(abs_raw[clipped].square().sum(dtype=torch.float64).item()) if bool(clipped.any().item()) else 0.0
+        cap_value = float(cap)
+        if math.isinf(cap_value) or cap_value >= row_norm_target:
+            capped_mask = torch.zeros_like(abs_raw, dtype=torch.bool)
+        else:
+            capped_mask = af.abs() >= (cap_value - 1e-6)
+        capped += int(capped_mask.sum().item())
+        capped_rows += int(capped_mask.any(dim=1).sum().item())
+        tail_mask = row_rms_endpoint.abs() > cap_value
+        rms_sq = row_rms_endpoint.square()
+        rms_energy += float(rms_sq.sum(dtype=torch.float64).item())
+        rms_tail_energy += float(rms_sq[tail_mask].sum(dtype=torch.float64).item()) if bool(tail_mask.any().item()) else 0.0
         dot_af_sign += float((af * sign).sum(dtype=torch.float64).item())
         norm_af += float(af.square().sum(dtype=torch.float64).item())
         norm_sign += float(sign.square().sum(dtype=torch.float64).item())
@@ -246,7 +265,7 @@ def lmo_alignment_stats(model: TiedImageGPT, opt, *, cap: float, chunk_rows: int
         "tied_momentum_row_norm_std_over_mean": float((rn.std(unbiased=False) / rn.mean().clamp_min(1e-30)).item()),
         "coords_capped_frac": capped / max(1, total),
         "rows_clipped_frac": capped_rows / max(1, active_rows),
-        "raw_tail_energy_frac": raw_tail_energy / max(raw_energy, 1e-30),
+        "raw_tail_energy_frac": rms_tail_energy / max(rms_energy, 1e-30),
         "cos_af_sign": cos,
         "objective_af_over_sign": obj_af / obj_sign if abs(obj_sign) > 1e-30 else None,
     }
