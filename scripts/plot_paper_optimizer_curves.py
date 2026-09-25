@@ -14,12 +14,11 @@ from typing import Iterable, Sequence
 import numpy as np
 
 
-# Paper-facing names are intentionally independent of implementation names.
 ARM_ORDER = ("Hybrid Muon", "SCION-style Sign", "AF-Muon")
 ARM_COLORS = {
-    "Hybrid Muon": "#6B7280",       # neutral charcoal
-    "SCION-style Sign": "#D55E00",  # Okabe--Ito vermillion
-    "AF-Muon": "#0072B2",           # Okabe--Ito blue
+    "Hybrid Muon": "#6B7280",
+    "SCION-style Sign": "#D55E00",
+    "AF-Muon": "#0072B2",
 }
 ARM_LINESTYLES = {
     "Hybrid Muon": (0, (4.0, 2.0)),
@@ -51,8 +50,6 @@ def infer_arm(run_name: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "_", run_name.lower()).strip("_")
     parts = set(normalized.split("_"))
 
-    # Check AF-Muon before Muon because "afmoun" contains "moun" and many
-    # historical run names use the short token "af".
     if (
         "afmoun" in parts
         or "af_muon" in normalized
@@ -112,8 +109,6 @@ def read_metrics(
                         f"expected a JSON object in {metrics_path} at line {line_number}"
                     )
                 phase = row.get("phase")
-                # Compatibility with the original train_causal_lm.py schema,
-                # which predates the explicit phase field.
                 if phase is None:
                     if "eval_loss" in row or "eval_ppl" in row:
                         phase = "eval"
@@ -262,8 +257,6 @@ def _nice_axis_max(values: Sequence[dict], token_divisor: float) -> float | None
         return None
     maximum = max(finite_tokens)
     if token_divisor >= 1e9:
-        # Paper plots should end at the next clean half-billion tick: e.g.
-        # Llama 1.31072B -> 1.5B, SmolLM 2.49856B -> 2.5B.
         return math.ceil(maximum * 2.0 - 1e-10) / 2.0
     return math.ceil(maximum * 10.0 - 1e-10) / 10.0
 
@@ -292,8 +285,6 @@ def _marker_indices(n_points: int, maximum_markers: int = 8) -> list[int]:
 
 
 def paper_rcparams() -> dict[str, object]:
-    # A Times/STIX-like serif stack matches the visual weight of common ICLR
-    # LaTeX setups without requiring a server-side LaTeX installation.
     return {
         "font.family": "serif",
         "font.serif": [
@@ -413,8 +404,6 @@ def plot_curves(
                     & np.isfinite(upper)
                 )
                 if panel == "eval_ppl" and ppl_scale == "log":
-                    # Never introduce an artificial ~1e-308 lower limit, which
-                    # would expand a log axis by hundreds of orders of magnitude.
                     valid_band &= lower > 0
                 else:
                     lower = np.maximum(lower, 0.0)
@@ -474,8 +463,6 @@ def plot_curves(
                 spine.set_color("#4B5563")
                 spine.set_linewidth(0.6)
 
-        # Keep all text and the legend inside the fixed-size canvas so the PDF
-        # remains exactly `width` inches when inserted with width=\linewidth.
         top = 0.70 if title else 0.77
         if layout == "vertical":
             top = 0.88 if title else 0.92
@@ -514,8 +501,6 @@ def plot_curves(
         output_stem.parent.mkdir(parents=True, exist_ok=True)
         written: list[Path] = []
         for fmt in formats:
-            # Append rather than replace so multi-dot stems such as
-            # llama.optimizer.png become llama.optimizer.pdf, not llama.pdf.
             path = output_stem.parent / f"{output_stem.name}.{fmt}"
             save_kwargs: dict[str, object] = {
                 "format": fmt,

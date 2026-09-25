@@ -6,16 +6,17 @@ for hidden matrices, assigns the aliased embedding/output table a finite-cap
 support-aware LMO, and uses RMS-normalized updates for remaining vector-like
 auxiliary parameters.
 
-The paper evaluates AF-Muon in eight tied-token settings:
+The paper evaluates AF-Muon in nine tied-token settings:
 
 1. NanoGPT-style decoder-only language modeling on FineWeb.
 2. SmolLM2-135M decoder-only language modeling on FineWeb.
 3. Qwen2.5-0.5B decoder-only language modeling on FineWeb.
 4. Llama-3.2-1B decoder-only language modeling on FineWeb.
 5. T5-style fully shared encoder-decoder vocabulary modeling on FineWeb.
-6. Sparse NanoGPT-MoE with a tied input/output vocabulary table.
-7. ImageGPT-style ImageNet-32 modeling with a tied RGB554 color-token table.
-8. Protein language modeling on UniRef50 / ProtGPT2-BPE.
+6. T5Gemma2-style shared-vocabulary encoder-decoder modeling on FineWeb.
+7. Sparse NanoGPT-MoE with a tied input/output vocabulary table.
+8. ImageGPT-style ImageNet-32 modeling with a tied RGB554 color-token table.
+9. Protein language modeling on UniRef50 / ProtGPT2-BPE.
 
 Datasets, token caches, pretrained model weights, and machine-specific paths are
 not included. To reproduce the experiments, prepare local token caches from the
@@ -98,10 +99,10 @@ auxiliary/tied weight decay in the controlled LMO comparisons.
 The experiments use three public data sources, converted into local token/cache
 files before training:
 
-- **FineWeb text.** Decoder-only, T5-style, and MoE experiments use FineWeb text
+- **FineWeb text.** Decoder-only, T5-style, T5Gemma2-style, and MoE experiments use FineWeb text
   streams. The cache is tokenized with the tokenizer for the corresponding
-  model family: SmolLM2 for NanoGPT/SmolLM2/T5/MoE-style settings, Qwen2.5 for
-  Qwen2.5-0.5B, and Llama for Llama-3.2-1B. The release expects prebuilt
+  model family: SmolLM2 for NanoGPT/SmolLM2/T5/T5Gemma2/MoE-style settings,
+  Qwen2.5 for Qwen2.5-0.5B, and Llama for Llama-3.2-1B. The release expects prebuilt
   contiguous token memmaps rather than raw documents.
 - **ImageNet-32 images.** The ImageGPT-style experiment uses the
   `benjamin-paine/imagenet-1k-32x32` image dataset. Images are converted into
@@ -142,7 +143,7 @@ models/
 
 See `data/README.md` and `models/README.md` for the minimal expected layouts.
 
-## Eight Paper Settings
+## Nine Paper Settings
 
 ### 1. NanoGPT / FineWeb
 
@@ -288,7 +289,47 @@ precision: FP32 trainable parameters and optimizer state with BF16 autocast
 gradient clipping: norm 1.0
 ```
 
-### 6. Sparse NanoGPT-MoE / FineWeb
+### 6. T5Gemma2-Style Shared Encoder-Decoder / FineWeb
+
+Code: `t5test/`
+
+Purpose: larger encoder-decoder transfer test for three-way shared vocabulary
+optimization. The model is initialized from a Hugging Face T5Gemma2-style config
+and trained from scratch on the same contiguous FineWeb token-cache interface.
+
+```text
+architecture: random-init google/t5gemma-2-270m-270m configuration
+topology: shared encoder input, decoder input, and output vocabulary table
+vocabulary size: 262k-row shared table
+sequence layout: source_len=256, target_len=256
+train budget: 750M predicted decoder target tokens
+actual target tokens: 750,256,128
+raw source-plus-target tokens: 1,500,512,256
+eval tokens: 1M
+seeds: 43, 44, 45
+parameters: 786,029,296
+tied vocabulary parameters: 167,772,160
+optimizers: Hybrid Muon, SCION-style Sign, AF-Muon
+batching: micro_batch_size=16, gradient_accumulation_steps=128
+target tokens/update: 524,288
+raw source-plus-target tokens/update: 1,048,576
+steps: 1,431
+eval_every_steps: 250
+log_every_steps: 25
+checkpointing: final checkpoint only
+rho_output / rho_hidden = 60
+precision: FP32 trainable parameters and optimizer state with BF16 autocast
+gradient checkpointing: enabled
+gradient clipping: norm 1.0
+```
+
+This script requires a `transformers` version with T5Gemma2 support. The paper
+runs used a source build reporting `transformers 5.18.0.dev0`. The experiment is
+random-init; pretrained weights are not loaded. Each run writes a `config.json`
+with the requested vocabulary size and the resolved input/output embedding
+shapes from the instantiated model.
+
+### 7. Sparse NanoGPT-MoE / FineWeb
 
 Code: `moe/`
 
@@ -317,7 +358,7 @@ gradient clipping: norm 1.0
 diagnostics: router entropy, expert fractions, load coefficient of variation
 ```
 
-### 7. ImageGPT-Style ImageNet-32
+### 8. ImageGPT-Style ImageNet-32
 
 Code: `afmoun_img/`
 
@@ -348,7 +389,7 @@ gradient clipping: norm 1.0
 metrics: validation loss, validation bits/dim, top-half completion loss
 ```
 
-### 8. Protein LM / UniRef50 + ProtGPT2-BPE
+### 9. Protein LM / UniRef50 + ProtGPT2-BPE
 
 Code:
 
